@@ -9,13 +9,18 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum TraceKind {
     Read,
     Write,
 }
+impl Default for TraceKind {
+    fn default() -> Self {
+        Self::Read
+    }
+}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 struct Trace {
     timestamp: u64,
     kind: TraceKind,
@@ -60,16 +65,50 @@ fn main() {
     println!("Start!");
     let start = Instant::now();
 
-    let record_batches: Vec<_> =
-        reader.into_iter().map(|v| v.unwrap()).collect();
+    let mut total = 0;
+    let mut record_batches = vec![];
+    let mut starts = vec![0];
+    for rb in reader {
+        let rb = rb.unwrap();
+        total += rb.num_rows();
+        starts.push(total);
+        record_batches.push(rb);
+    }
+    starts.pop();
 
-    let traces: Vec<Vec<Trace>> = pool.install(|| {
-        record_batches
-            .into_par_iter()
-            .map(|rb| parse_record_batch(rb))
-            .collect()
-    });
-    println!("Len: {}", traces.iter().map(|v| v.len()).sum::<usize>());
+    let mut traces = Vec::with_capacity(total);
+    traces.resize(total, Trace::default());
+    println!("{}", traces.len());
+    println!("{:?}", &starts[starts.len() - 10..]);
+    println!("{}", record_batches.len());
+
+    for (start, mut rb) in starts.into_iter().zip(record_batches) {
+        // println!("start: {start}");
+        let x = rb.remove_column(5);
+        let sizes = x.as_any().downcast_ref::<UInt32Array>().unwrap();
+        let x = rb.remove_column(4);
+        let addrs = x.as_any().downcast_ref::<UInt64Array>().unwrap();
+        let x = rb.remove_column(3);
+        let kinds = x.as_any().downcast_ref::<StringArray>().unwrap();
+        let x = rb.remove_column(0);
+        let timestamps = x.as_any().downcast_ref::<UInt64Array>().unwrap();
+        let iter = timestamps.iter().zip(kinds).zip(addrs).zip(sizes);
+
+        for (j, (((t, kind), addr), size)) in iter.enumerate() {
+            let i = start + j;
+            let t = t.unwrap();
+            let addr = addr.unwrap();
+            let size = size.unwrap();
+            let kind = match kind.unwrap().as_bytes()[0] {
+                b'R' => TraceKind::Read,
+                b'W' => TraceKind::Write,
+                v => panic!("Invalid trace kind: {v}"),
+            };
+            traces[i] = Trace { timestamp: t, kind, addr, size };
+        }
+    }
+
+    println!("Len: {}", traces.len());
     println!("{:?}", Instant::elapsed(&start));
 
     let f = File::open(data_dir.join("proj_2.typed.parquet")).unwrap();
