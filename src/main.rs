@@ -53,6 +53,8 @@ fn parse_record_batch(mut rb: RecordBatch) -> Vec<Trace> {
     vec
 }
 
+const INDEX: usize = 1258972;
+
 fn main() {
     let data_dir = Path::new("/Users/khang/.local/data/msr-cambridge");
     let f = File::open(data_dir.join("proj_2.typed.parquet")).unwrap();
@@ -95,7 +97,9 @@ fn main() {
         let iter = timestamps.iter().zip(kinds).zip(addrs).zip(sizes);
 
         for (j, (((t, kind), addr), size)) in iter.enumerate() {
-            let i = start + j;
+            let x = traces.as_mut_ptr();
+            let x = unsafe { x.add(start + j) };
+
             let t = t.unwrap();
             let addr = addr.unwrap();
             let size = size.unwrap();
@@ -104,11 +108,14 @@ fn main() {
                 b'W' => TraceKind::Write,
                 v => panic!("Invalid trace kind: {v}"),
             };
-            traces[i] = Trace { timestamp: t, kind, addr, size };
+            unsafe {
+                *x = Trace { timestamp: t, kind, addr, size };
+            }
         }
     }
 
     println!("Len: {}", traces.len());
+    println!("nth: {:?}", traces[INDEX]);
     println!("{:?}", Instant::elapsed(&start));
 
     let f = File::open(data_dir.join("proj_2.typed.parquet")).unwrap();
@@ -123,5 +130,6 @@ fn main() {
         vec.extend(parse_record_batch(x.unwrap()));
     }
     println!("Len: {}", traces.len());
+    println!("nth: {:?}", traces[INDEX]);
     println!("{:?}", Instant::elapsed(&start));
 }
