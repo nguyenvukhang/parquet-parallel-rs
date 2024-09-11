@@ -9,7 +9,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum TraceKind {
     Read,
     Write,
@@ -20,7 +20,7 @@ impl Default for TraceKind {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Trace {
     timestamp: u64,
     kind: TraceKind,
@@ -110,11 +110,15 @@ fn main() {
     println!("Start!");
     let start = Instant::now();
 
-    let mut vec = vec![];
+    let mut traces2 = vec![];
     for x in reader {
-        vec.extend(parse_record_batch(x.unwrap()));
+        traces2.extend(parse_record_batch(x.unwrap()));
     }
-    println!("Len: {}", traces.len());
-    println!("nth: {:?}", traces[INDEX]);
+    println!("Len: {}", traces2.len());
+    println!("nth: {:?}", traces2[INDEX]);
     println!("{:?}", Instant::elapsed(&start));
+
+    for i in 0..traces2.len() {
+        assert_eq!(traces[i], traces2[i]);
+    }
 }
