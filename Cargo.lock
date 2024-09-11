@@ -443,7 +443,6 @@ name = "fast-pq"
 version = "0.1.0"
 dependencies = [
  "arrow",
- "arrow-array",
  "parquet",
 ]
 
