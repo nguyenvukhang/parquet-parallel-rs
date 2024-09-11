@@ -59,7 +59,11 @@ fn main() {
     let data_dir = Path::new("/Users/khang/.local/data/msr-cambridge");
     let f = File::open(data_dir.join("proj_2.typed.parquet")).unwrap();
     let builder = ParquetRecordBatchReaderBuilder::try_new(f).unwrap();
-    let reader = builder.build().unwrap();
+    let nrows = builder.metadata().file_metadata().num_rows() as usize;
+    let mut traces = Vec::with_capacity(nrows);
+    traces.resize(nrows, Trace::default());
+    let chunk_size = 0x1000;
+    let reader = builder.with_batch_size(chunk_size).build().unwrap();
 
     let builder = ThreadPoolBuilder::new();
     let pool = builder.num_threads(4).build().unwrap();
@@ -67,32 +71,10 @@ fn main() {
     println!("Start!");
     let start = Instant::now();
 
-    let mut total = 0;
-    let mut record_batches = vec![];
-    let mut chunk_sizes = vec![];
-    for rb in reader {
-        let rb = rb.unwrap();
-        let nrows = rb.num_rows();
-        total += nrows;
-        chunk_sizes.push(nrows);
-        record_batches.push(rb);
-    }
-
-    let mut traces = Vec::with_capacity(total);
-    traces.resize(total, Trace::default());
-
-    let mut chunks = vec![];
-    let mut y = &mut traces[..];
-    for sz in chunk_sizes.clone() {
-        let (x, z) = y.split_at_mut(sz);
-        chunks.push(x);
-        y = z;
-    }
-
-    let pairs = chunks.into_iter().zip(record_batches).collect::<Vec<_>>();
-
     pool.install(|| {
-        pairs.into_par_iter().for_each(|(trace, mut rb)| {
+        let iter = traces.chunks_mut(chunk_size).zip(reader);
+        iter.par_bridge().into_par_iter().for_each(|(trace, rb)| {
+            let mut rb = rb.unwrap();
             let x = rb.remove_column(5);
             let sizes = x.as_any().downcast_ref::<UInt32Array>().unwrap();
             let x = rb.remove_column(4);
@@ -123,7 +105,7 @@ fn main() {
 
     let f = File::open(data_dir.join("proj_2.typed.parquet")).unwrap();
     let builder = ParquetRecordBatchReaderBuilder::try_new(f).unwrap();
-    let reader = builder.build().unwrap();
+    let reader = builder.with_batch_size(chunk_size).build().unwrap();
 
     println!("Start!");
     let start = Instant::now();
