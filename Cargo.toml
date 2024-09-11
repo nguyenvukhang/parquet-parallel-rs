@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 arrow = "53.0.0"
 parquet = "53.0.0"
+rayon = "1.10.0"

@@ -3,6 +3,8 @@ use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use arrow::array::{Array, StringArray, UInt32Array, UInt64Array};
 use arrow::record_batch::RecordBatch;
 
+use rayon::{prelude::*, ThreadPoolBuilder};
+
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -52,19 +54,35 @@ fn main() {
     let builder = ParquetRecordBatchReaderBuilder::try_new(f).unwrap();
     let reader = builder.build().unwrap();
 
+    let builder = ThreadPoolBuilder::new();
+    let pool = builder.num_threads(4).build().unwrap();
+
+    println!("Start!");
     let start = Instant::now();
-    for x in reader {
-        let rb = x.unwrap();
-        let traces = parse_record_batch(rb);
-    }
+
+    let record_batches: Vec<_> =
+        reader.into_iter().map(|v| v.unwrap()).collect();
+
+    let traces: Vec<Trace> = pool.install(|| {
+        record_batches
+            .into_par_iter()
+            .flat_map(|rb| parse_record_batch(rb))
+            .collect()
+    });
+    println!("Len: {}", traces.len());
     println!("{:?}", Instant::elapsed(&start));
 
-    // let mut record_batch = reader.next().unwrap().unwrap();
-    // println!("record_batch: {:?}", record_batch.schema());
-    // let x = record_batch.remove_column(4);
-    // let addrs = x.as_any().downcast_ref::<UInt64Array>().unwrap();
-    // for col in record_batch.columns() {
-    //     // println!("{:?}", col);
-    // }
-    // // println!("{:?}", record_batch);
+    let f = File::open(data_dir.join("proj_2.typed.parquet")).unwrap();
+    let builder = ParquetRecordBatchReaderBuilder::try_new(f).unwrap();
+    let reader = builder.build().unwrap();
+
+    println!("Start!");
+    let start = Instant::now();
+
+    let mut vec = vec![];
+    for x in reader {
+        vec.extend(parse_record_batch(x.unwrap()));
+    }
+    println!("Len: {}", traces.len());
+    println!("{:?}", Instant::elapsed(&start));
 }
