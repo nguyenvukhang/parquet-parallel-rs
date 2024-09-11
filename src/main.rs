@@ -63,13 +63,13 @@ fn main() {
     let record_batches: Vec<_> =
         reader.into_iter().map(|v| v.unwrap()).collect();
 
-    let traces: Vec<Trace> = pool.install(|| {
+    let traces: Vec<Vec<Trace>> = pool.install(|| {
         record_batches
             .into_par_iter()
-            .flat_map(|rb| parse_record_batch(rb))
+            .map(|rb| parse_record_batch(rb))
             .collect()
     });
-    println!("Len: {}", traces.len());
+    println!("Len: {}", traces.iter().map(|v| v.len()).sum::<usize>());
     println!("{:?}", Instant::elapsed(&start));
 
     let f = File::open(data_dir.join("proj_2.typed.parquet")).unwrap();
