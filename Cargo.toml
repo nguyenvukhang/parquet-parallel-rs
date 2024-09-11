@@ -1,0 +1,9 @@
+[package]
+name = "fast-pq"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arrow = "53.0.0"
+arrow-array = "53.0.0"
+parquet = "53.0.0"
