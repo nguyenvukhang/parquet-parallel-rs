@@ -84,35 +84,43 @@ fn main() {
     println!("{:?}", &starts[starts.len() - 10..]);
     println!("{}", record_batches.len());
 
-    for (start, mut rb) in starts.into_iter().zip(record_batches) {
-        // println!("start: {start}");
-        let x = rb.remove_column(5);
-        let sizes = x.as_any().downcast_ref::<UInt32Array>().unwrap();
-        let x = rb.remove_column(4);
-        let addrs = x.as_any().downcast_ref::<UInt64Array>().unwrap();
-        let x = rb.remove_column(3);
-        let kinds = x.as_any().downcast_ref::<StringArray>().unwrap();
-        let x = rb.remove_column(0);
-        let timestamps = x.as_any().downcast_ref::<UInt64Array>().unwrap();
-        let iter = timestamps.iter().zip(kinds).zip(addrs).zip(sizes);
-
-        for (j, (((t, kind), addr), size)) in iter.enumerate() {
-            let x = traces.as_mut_ptr();
-            let x = unsafe { x.add(start + j) };
-
-            let t = t.unwrap();
-            let addr = addr.unwrap();
-            let size = size.unwrap();
-            let kind = match kind.unwrap().as_bytes()[0] {
-                b'R' => TraceKind::Read,
-                b'W' => TraceKind::Write,
-                v => panic!("Invalid trace kind: {v}"),
-            };
-            unsafe {
-                *x = Trace { timestamp: t, kind, addr, size };
-            }
-        }
+    let mut items = vec![];
+    for (start, rb) in starts.into_iter().zip(record_batches) {
+        items.push((start, rb, traces.as_mut_ptr()));
     }
+
+    // let pairs = starts.into_iter().zip(record_batches).collect::<Vec<_>>();
+
+    pool.install(|| {
+        items.into_par_iter().for_each(|(start, mut rb, ptr)| {
+            let x = rb.remove_column(5);
+            let sizes = x.as_any().downcast_ref::<UInt32Array>().unwrap();
+            let x = rb.remove_column(4);
+            let addrs = x.as_any().downcast_ref::<UInt64Array>().unwrap();
+            let x = rb.remove_column(3);
+            let kinds = x.as_any().downcast_ref::<StringArray>().unwrap();
+            let x = rb.remove_column(0);
+            let timestamps = x.as_any().downcast_ref::<UInt64Array>().unwrap();
+            let iter = timestamps.iter().zip(kinds).zip(addrs).zip(sizes);
+
+            for (j, (((t, kind), addr), size)) in iter.enumerate() {
+                let x = traces.as_mut_ptr();
+                let x = unsafe { x.add(start + j) };
+
+                let t = t.unwrap();
+                let addr = addr.unwrap();
+                let size = size.unwrap();
+                let kind = match kind.unwrap().as_bytes()[0] {
+                    b'R' => TraceKind::Read,
+                    b'W' => TraceKind::Write,
+                    v => panic!("Invalid trace kind: {v}"),
+                };
+                unsafe {
+                    *x = Trace { timestamp: t, kind, addr, size };
+                }
+            }
+        });
+    });
 
     println!("Len: {}", traces.len());
     println!("nth: {:?}", traces[INDEX]);
